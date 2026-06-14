@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # ZenyunVPN — automated VPS installer
 # Usage: curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
-[[ -e /dev/tty ]] && exec < /dev/tty
 set -euo pipefail
+
+# Force read from terminal (works with curl | bash)
+if [ -t 0 ]; then
+  TTY_INPUT="/dev/stdin"
+else
+  TTY_INPUT="/dev/tty"
+fi
 
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="b0aef10571e26a3c3958c01e2c3c85d17e3eb6e55ddfd1a4bbffc2fb4e0ebe09"
@@ -121,33 +127,19 @@ tf() {
   printf "$(t "$key")" "$@"
 }
 
-detect_lang() {
-  case "${LANG:-}" in
-    zh*|ZH*) echo "zh" ;;
-    ru*|RU*) echo "ru" ;;
-    *)       echo "en" ;;
-  esac
-}
-
 choose_lang() {
-  local detected default_choice choice
-  detected="$(detect_lang)"
-  case "$detected" in
-    ru) default_choice="1" ;;
-    zh) default_choice="3" ;;
-    *)  default_choice="2" ;;
-  esac
-  echo ""
-  echo -e "${MAGENTA}${BOLD}Select language / Выберите язык / 选择语言:${RESET}"
+  echo "Select language / Выберите язык / 选择语言:"
   echo "  1) Русский"
   echo "  2) English"
   echo "  3) 中文"
-  read -r -p "$(echo -e "${CYAN}?${RESET} $(t lang_choice) [${default_choice}]: ")" choice </dev/tty
-  choice="${choice:-$default_choice}"
-  case "$choice" in
-    1|ru|RU) ZENYUN_LANG="ru" ;;
-    3|zh|ZH|cn) ZENYUN_LANG="zh" ;;
-    *) ZENYUN_LANG="en" ;;
+  printf "Enter choice [1-3]: "
+  read LANG_CHOICE < "$TTY_INPUT"
+
+  case "$LANG_CHOICE" in
+    1) ZENYUN_LANG="ru" ;;
+    2) ZENYUN_LANG="en" ;;
+    3) ZENYUN_LANG="zh" ;;
+    *) ZENYUN_LANG="ru" ;;
   esac
   export ZENYUN_LANG
 }
@@ -187,17 +179,20 @@ prompt() {
   local var="$1" key="$2" default="${3:-}"
   local text; text="$(t "$key")"
   if [[ -n "$default" ]]; then
-    read -r -p "$(echo -e "${CYAN}?${RESET} ${text} [${default}]: ")" input </dev/tty
+    printf "? %s [%s]: " "$text" "$default"
+    read -r input < "$TTY_INPUT"
     printf -v "$var" '%s' "${input:-$default}"
   else
-    read -r -p "$(echo -e "${CYAN}?${RESET} ${text}: ")" input </dev/tty
+    printf "? %s: " "$text"
+    read -r input < "$TTY_INPUT"
     printf -v "$var" '%s' "$input"
   fi
 }
 
 prompt_secret() {
   local var="$1" key="$2"
-  read -r -s -p "$(echo -e "${CYAN}?${RESET} $(t "$key"): ")" input </dev/tty
+  printf "? %s: " "$(t "$key")"
+  read -r -s input < "$TTY_INPUT"
   echo ""
   printf -v "$var" '%s' "$input"
 }
