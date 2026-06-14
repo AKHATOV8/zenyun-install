@@ -16,9 +16,7 @@ set -euo pipefail
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-GITHUB_USER="AKHATOV8"
-BOT_REPO_NAME="zenyun-vpn"
-DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-/root/.ssh/zenyun_deploy_key}"
+BOT_REPO_URL="https://github.com/AKHATOV8/zenyun-vpn.git"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
 
@@ -68,22 +66,10 @@ t() {
     admin_id_invalid) ru="Некорректный Telegram ID"; en="Invalid Telegram ID"; zh="Telegram ID 无效" ;;
     ask_sub_domain)   ru="Домен подписки (например sub.example.com)"; en="Subscription domain (e.g. sub.example.com)"; zh="订阅域名（例如 sub.example.com）" ;;
     ask_app_domain)   ru="Домен кабинета (например app.example.com)"; en="Cabinet domain (e.g. app.example.com)"; zh="用户中心域名（例如 app.example.com）" ;;
-    ask_landing)      ru="Домен лендинга (например example.com, Enter — пропустить)"; en="Landing domain (e.g. example.com, Enter to skip)"; zh="落地页域名（例如 example.com，回车跳过）" ;;
-    ask_github_user)  ru="GitHub username/org с приватным репозиторием бота"; en="GitHub username/org with private bot repo"; zh="拥有私有机器人仓库的 GitHub 用户名/组织" ;;
-    ask_repo_name)    ru="Имя репозитория бота"; en="Bot repository name"; zh="机器人仓库名称" ;;
     ssl_choose)       ru="Выберите тип SSL:"; en="Choose SSL type:"; zh="选择 SSL 类型：" ;;
     ssl_le)           ru="Let's Encrypt (ручной DNS на сервер)"; en="Let's Encrypt (manual DNS to server)"; zh="Let's Encrypt（手动 DNS 指向服务器）" ;;
     ssl_cf)           ru="Cloudflare (Origin Certificate)"; en="Cloudflare (Origin Certificate)"; zh="Cloudflare（源站证书）" ;;
     ssl_option)       ru="Вариант (1 или 2)"; en="Option (1 or 2)"; zh="选项 (1 或 2)" ;;
-    ask_cf_cert)      ru="Путь к Cloudflare Origin Certificate (fullchain.pem)"; en="Path to Cloudflare Origin Certificate (fullchain.pem)"; zh="Cloudflare 源站证书路径 (fullchain.pem)" ;;
-    ask_cf_key)       ru="Путь к Cloudflare Origin Private Key (privkey.pem)"; en="Path to Cloudflare Origin Private Key (privkey.pem)"; zh="Cloudflare 源站私钥路径 (privkey.pem)" ;;
-    ask_certbot_mail) ru="Email для Let's Encrypt"; en="Email for Let's Encrypt"; zh="Let's Encrypt 邮箱" ;;
-    ask_deploy_key)   ru="Путь к deploy key для git clone"; en="Path to deploy key for git clone"; zh="git clone 部署密钥路径" ;;
-    deploy_key_title) ru="Deploy key"; en="Deploy key"; zh="部署密钥" ;;
-    deploy_key_miss)  ru="Deploy key не найден: %s"; en="Deploy key not found: %s"; zh="未找到部署密钥：%s" ;;
-    ask_key_path)     ru="Укажите путь к приватному ключу"; en="Specify private key path"; zh="请输入私钥路径" ;;
-    key_not_found)    ru="Файл ключа не найден"; en="Key file not found"; zh="密钥文件不存在" ;;
-    deploy_key_ok)    ru="Deploy key: %s"; en="Deploy key: %s"; zh="部署密钥：%s" ;;
     clone_title)      ru="Загрузка исходников"; en="Fetching source code"; zh="获取源代码" ;;
     dir_exists)       ru="Каталог %s уже существует — обновление"; en="Directory %s exists — updating"; zh="目录 %s 已存在 — 正在更新" ;;
     cloning)          ru="Клонирование %s …"; en="Cloning %s …"; zh="正在克隆 %s …" ;;
@@ -316,30 +302,17 @@ collect_config() {
   fi
 }
 
-# ── Deploy key & clone ───────────────────────────────────────────────────────
-setup_deploy_key() {
-  section "$(t deploy_key_title)"
-  if [[ ! -f "$DEPLOY_KEY_PATH" ]]; then
-    warn "$(tf deploy_key_miss "$DEPLOY_KEY_PATH")"
-    prompt DEPLOY_KEY_PATH ask_key_path
-    [[ -f "$DEPLOY_KEY_PATH" ]] || fail "$(t key_not_found)"
-  fi
-  chmod 600 "$DEPLOY_KEY_PATH"
-  ok "$(tf deploy_key_ok "$DEPLOY_KEY_PATH")"
-}
-
+# ── Clone source ───────────────────────────────────────────────────────────────
 clone_source() {
   section "$(t clone_title)"
-  local repo_url="git@github.com:${GITHUB_USER}/${BOT_REPO_NAME}.git"
-  export GIT_SSH_COMMAND="ssh -i ${DEPLOY_KEY_PATH} -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
 
   if [[ -d "$INSTALL_DIR/.git" ]]; then
     warn "$(tf dir_exists "$INSTALL_DIR")"
     git -C "$INSTALL_DIR" pull --ff-only
   else
     mkdir -p "$(dirname "$INSTALL_DIR")"
-    step "$(tf cloning "$repo_url")"
-    git clone "$repo_url" "$INSTALL_DIR"
+    step "$(tf cloning "$BOT_REPO_URL")"
+    git clone "$BOT_REPO_URL" "$INSTALL_DIR"
   fi
   ok "$(t source_ok)"
 }
@@ -659,7 +632,6 @@ main() {
   check_requirements
   install_docker
   collect_config
-  setup_deploy_key
   clone_source
   generate_env
   write_nginx_config
