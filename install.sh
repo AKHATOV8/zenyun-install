@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ZenyunVPN — automated VPS installer
-# Usage: curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/zenyun-install/main/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
 set -euo pipefail
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -9,6 +9,7 @@ INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
 BOT_REPO_NAME="${BOT_REPO_NAME:-zenyun-vpn}"
 DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-/root/.ssh/zenyun_deploy_key}"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
+ZENYUN_LANG="${ZENYUN_LANG:-}"
 
 # ── Colors & UI ──────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -19,16 +20,135 @@ else
   RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; MAGENTA=''; BOLD=''; DIM=''; RESET=''
 fi
 
-_lang() {
-  case "${LANG:-ru}" in
-    en*|EN*) echo "en" ;;
-    *) echo "ru" ;;
+# ── Translations (ru / en / zh) ───────────────────────────────────────────────
+# Usage: t <key>   |   tf <key> <arg> ...
+t() {
+  local key="$1" ru="" en="" zh=""
+  case "$key" in
+    lang_prompt)      ru="Выберите язык"; en="Select language"; zh="选择语言" ;;
+    lang_menu)        ru="1) Русский  2) English  3) 中文"; en="1) Русский  2) English  3) 中文"; zh="1) Русский  2) English  3) 中文" ;;
+    lang_choice)      ru="Язык (1/2/3)"; en="Language (1/2/3)"; zh="语言 (1/2/3)" ;;
+    access_check)     ru="Проверка доступа"; en="Access verification"; zh="访问验证" ;;
+    pwd_prompt)       ru="Введите пароль установки"; en="Enter installation password"; zh="请输入安装密码" ;;
+    pwd_wrong)        ru="Неверный пароль"; en="Wrong password"; zh="密码错误" ;;
+    pwd_ok)           ru="Пароль принят"; en="Password accepted"; zh="密码验证通过" ;;
+    sys_check)        ru="Проверка системы"; en="System requirements"; zh="系统要求检查" ;;
+    label_os)         ru="ОС"; en="OS"; zh="操作系统" ;;
+    os_unknown)       ru="Не удалось определить ОС"; en="Cannot detect OS"; zh="无法检测操作系统" ;;
+    os_warn)          ru="Рекомендуется Ubuntu. Обнаружено: %s"; en="Ubuntu recommended. Detected: %s"; zh="建议使用 Ubuntu。检测到：%s" ;;
+    os_old)           ru="Требуется Ubuntu 20.04+. Обнаружено: %s"; en="Ubuntu 20.04+ required. Found: %s"; zh="需要 Ubuntu 20.04+。当前：%s" ;;
+    label_ram)        ru="Память"; en="RAM"; zh="内存" ;;
+    ram_low)          ru="Минимум 1 ГБ RAM. Доступно: %s МБ"; en="Minimum 1 GB RAM. Available: %s MB"; zh="至少需要 1 GB 内存。可用：%s MB" ;;
+    ram_ok)           ru="RAM: %s МБ"; en="RAM: %s MB"; zh="内存：%s MB" ;;
+    label_cpu)        ru="CPU"; en="CPU"; zh="CPU" ;;
+    cpu_ok)           ru="CPU: %s ядер"; en="CPU: %s cores"; zh="CPU：%s 核" ;;
+    label_disk)       ru="Диск"; en="Disk"; zh="磁盘" ;;
+    disk_low)         ru="Мало места на диске: %sG"; en="Low disk space: %sG"; zh="磁盘空间不足：%sG" ;;
+    disk_ok)          ru="Свободно: %sG"; en="Free: %sG"; zh="可用空间：%sG" ;;
+    need_root)        ru="Запустите от root: sudo bash install.sh"; en="Run as root: sudo bash install.sh"; zh="请使用 root 运行：sudo bash install.sh" ;;
+    docker_title)     ru="Docker"; en="Docker"; zh="Docker" ;;
+    docker_exists)    ru="Docker уже установлен: %s"; en="Docker already installed: %s"; zh="Docker 已安装：%s" ;;
+    docker_install)   ru="Установка Docker…"; en="Installing Docker…"; zh="正在安装 Docker…" ;;
+    docker_ok)        ru="Docker установлен"; en="Docker installed"; zh="Docker 安装完成" ;;
+    config_title)     ru="Настройка"; en="Configuration"; zh="配置" ;;
+    ask_bot_token)    ru="Токен бота Telegram (@BotFather)"; en="Telegram bot token (@BotFather)"; zh="Telegram 机器人令牌 (@BotFather)" ;;
+    token_required)   ru="Токен обязателен"; en="Token is required"; zh="令牌为必填项" ;;
+    ask_admin_id)     ru="Telegram ID администратора"; en="Admin Telegram ID"; zh="管理员 Telegram ID" ;;
+    admin_id_invalid) ru="Некорректный Telegram ID"; en="Invalid Telegram ID"; zh="Telegram ID 无效" ;;
+    ask_sub_domain)   ru="Домен подписки (например sub.example.com)"; en="Subscription domain (e.g. sub.example.com)"; zh="订阅域名（例如 sub.example.com）" ;;
+    ask_app_domain)   ru="Домен кабинета (например app.example.com)"; en="Cabinet domain (e.g. app.example.com)"; zh="用户中心域名（例如 app.example.com）" ;;
+    ask_landing)      ru="Домен лендинга (например example.com, Enter — пропустить)"; en="Landing domain (e.g. example.com, Enter to skip)"; zh="落地页域名（例如 example.com，回车跳过）" ;;
+    ask_github_user)  ru="GitHub username/org с приватным репозиторием бота"; en="GitHub username/org with private bot repo"; zh="拥有私有机器人仓库的 GitHub 用户名/组织" ;;
+    ask_repo_name)    ru="Имя репозитория бота"; en="Bot repository name"; zh="机器人仓库名称" ;;
+    ssl_choose)       ru="Выберите тип SSL:"; en="Choose SSL type:"; zh="选择 SSL 类型：" ;;
+    ssl_le)           ru="Let's Encrypt (ручной DNS на сервер)"; en="Let's Encrypt (manual DNS to server)"; zh="Let's Encrypt（手动 DNS 指向服务器）" ;;
+    ssl_cf)           ru="Cloudflare (Origin Certificate)"; en="Cloudflare (Origin Certificate)"; zh="Cloudflare（源站证书）" ;;
+    ssl_option)       ru="Вариант (1 или 2)"; en="Option (1 or 2)"; zh="选项 (1 或 2)" ;;
+    ask_cf_cert)      ru="Путь к Cloudflare Origin Certificate (fullchain.pem)"; en="Path to Cloudflare Origin Certificate (fullchain.pem)"; zh="Cloudflare 源站证书路径 (fullchain.pem)" ;;
+    ask_cf_key)       ru="Путь к Cloudflare Origin Private Key (privkey.pem)"; en="Path to Cloudflare Origin Private Key (privkey.pem)"; zh="Cloudflare 源站私钥路径 (privkey.pem)" ;;
+    ask_certbot_mail) ru="Email для Let's Encrypt"; en="Email for Let's Encrypt"; zh="Let's Encrypt 邮箱" ;;
+    ask_deploy_key)   ru="Путь к deploy key для git clone"; en="Path to deploy key for git clone"; zh="git clone 部署密钥路径" ;;
+    deploy_key_title) ru="Deploy key"; en="Deploy key"; zh="部署密钥" ;;
+    deploy_key_miss)  ru="Deploy key не найден: %s"; en="Deploy key not found: %s"; zh="未找到部署密钥：%s" ;;
+    ask_key_path)     ru="Укажите путь к приватному ключу"; en="Specify private key path"; zh="请输入私钥路径" ;;
+    key_not_found)    ru="Файл ключа не найден"; en="Key file not found"; zh="密钥文件不存在" ;;
+    deploy_key_ok)    ru="Deploy key: %s"; en="Deploy key: %s"; zh="部署密钥：%s" ;;
+    clone_title)      ru="Загрузка исходников"; en="Fetching source code"; zh="获取源代码" ;;
+    dir_exists)       ru="Каталог %s уже существует — обновление"; en="Directory %s exists — updating"; zh="目录 %s 已存在 — 正在更新" ;;
+    cloning)          ru="Клонирование %s …"; en="Cloning %s …"; zh="正在克隆 %s …" ;;
+    source_ok)        ru="Исходники готовы"; en="Source code ready"; zh="源代码就绪" ;;
+    env_title)        ru="Генерация .env"; en="Generating .env"; zh="生成 .env" ;;
+    env_ok)           ru=".env создан"; en=".env created"; zh=".env 已创建" ;;
+    nginx_title)      ru="Nginx"; en="Nginx"; zh="Nginx" ;;
+    nginx_ok)         ru="nginx.conf создан"; en="nginx.conf created"; zh="nginx.conf 已创建" ;;
+    ssl_title)        ru="SSL-сертификаты"; en="SSL certificates"; zh="SSL 证书" ;;
+    cf_not_found)     ru="Cloudflare сертификаты не найдены"; en="Cloudflare certificates not found"; zh="未找到 Cloudflare 证书" ;;
+    cf_ok)            ru="Cloudflare Origin Certificate установлен"; en="Cloudflare Origin Certificate installed"; zh="Cloudflare 源站证书已安装" ;;
+    temp_cert)        ru="Временный self-signed сертификат…"; en="Temporary self-signed certificate…"; zh="临时自签名证书…" ;;
+    le_request)       ru="Запрос Let's Encrypt…"; en="Requesting Let's Encrypt…"; zh="正在申请 Let's Encrypt…" ;;
+    dns_hint)         ru="Убедитесь, что DNS указывает на этот сервер"; en="Ensure DNS points to this server"; zh="请确保 DNS 已指向此服务器" ;;
+    le_ok)            ru="Let's Encrypt сертификат получен"; en="Let's Encrypt certificate obtained"; zh="Let's Encrypt 证书已获取" ;;
+    le_fail)          ru="Certbot не смог получить сертификат — используется временный"; en="Certbot failed — using temporary cert"; zh="Certbot 获取失败 — 使用临时证书" ;;
+    le_manual)        ru="Запустите certbot вручную после настройки DNS"; en="Run certbot manually after DNS is configured"; zh="DNS 配置完成后请手动运行 certbot" ;;
+    start_title)      ru="Запуск сервисов"; en="Starting services"; zh="启动服务" ;;
+    build_images)     ru="Сборка образов (это может занять несколько минут)…"; en="Building images (may take a few minutes)…"; zh="正在构建镜像（可能需要几分钟）…" ;;
+    containers_ok)    ru="Контейнеры запущены"; en="Containers started"; zh="容器已启动" ;;
+    wait_ready)       ru="Ожидание готовности…"; en="Waiting for readiness…"; zh="等待服务就绪…" ;;
+    pg_ready)         ru="PostgreSQL готов"; en="PostgreSQL ready"; zh="PostgreSQL 已就绪" ;;
+    backup_cron)      ru="Cron бэкапа настроен (03:00)"; en="Backup cron configured (03:00)"; zh="备份定时任务已配置 (03:00)" ;;
+    done_title)       ru="🎉 Установка завершена!"; en="🎉 Installation complete!"; zh="🎉 安装完成！" ;;
+    urls_title)       ru="Доступные URL:"; en="Access URLs:"; zh="访问地址：" ;;
+    url_miniapp)      ru="Mini App (подписка)"; en="Mini App (subscription)"; zh="Mini App（订阅）" ;;
+    url_sub)          ru="Подписка"; en="Subscription endpoint"; zh="订阅端点" ;;
+    url_cabinet)      ru="Веб-кабинет"; en="Web cabinet"; zh="网页用户中心" ;;
+    url_admin)        ru="Секретная админ-панель"; en="Secret admin panel"; zh="秘密管理面板" ;;
+    botfather_title)  ru="Следующие шаги в @BotFather:"; en="Next steps in @BotFather:"; zh="@BotFather 后续步骤：" ;;
+    logs_hint)        ru="Логи: docker compose -f %s/docker-compose.yml logs -f bot web"; en="Logs: docker compose -f %s/docker-compose.yml logs -f bot web"; zh="日志：docker compose -f %s/docker-compose.yml logs -f bot web" ;;
+    support)          ru="Поддержка: @zenyuntestbot"; en="Support: @zenyuntestbot"; zh="技术支持：@zenyuntestbot" ;;
+    *) ru="$key"; en="$key"; zh="$key" ;;
+  esac
+  case "$ZENYUN_LANG" in
+    en) echo "$en" ;;
+    zh) echo "$zh" ;;
+    *)  echo "$ru" ;;
   esac
 }
 
-_msg() {
-  local ru="$1" en="$2"
-  if [[ "$(_lang)" == "en" ]]; then echo "$en"; else echo "$ru"; fi
+tf() {
+  local key="$1"; shift
+  # shellcheck disable=SC2059
+  printf "$(t "$key")" "$@"
+}
+
+detect_lang() {
+  case "${LANG:-}" in
+    zh*|ZH*) echo "zh" ;;
+    ru*|RU*) echo "ru" ;;
+    *)       echo "en" ;;
+  esac
+}
+
+choose_lang() {
+  local detected default_choice choice
+  detected="$(detect_lang)"
+  case "$detected" in
+    ru) default_choice="1" ;;
+    zh) default_choice="3" ;;
+    *)  default_choice="2" ;;
+  esac
+  echo ""
+  echo -e "${MAGENTA}${BOLD}Select language / Выберите язык / 选择语言:${RESET}"
+  echo "  1) Русский"
+  echo "  2) English"
+  echo "  3) 中文"
+  read -r -p "$(echo -e "${CYAN}?${RESET} $(t lang_choice) [${default_choice}]: ")" choice
+  choice="${choice:-$default_choice}"
+  case "$choice" in
+    1|ru|RU) ZENYUN_LANG="ru" ;;
+    3|zh|ZH|cn) ZENYUN_LANG="zh" ;;
+    *) ZENYUN_LANG="en" ;;
+  esac
+  export ZENYUN_LANG
 }
 
 banner() {
@@ -63,9 +183,8 @@ progress_bar() {
 }
 
 prompt() {
-  local var="$1" ru="$2" en="$3" default="${4:-}"
-  local text
-  if [[ "$(_lang)" == "en" ]]; then text="$en"; else text="$ru"; fi
+  local var="$1" key="$2" default="${3:-}"
+  local text; text="$(t "$key")"
   if [[ -n "$default" ]]; then
     read -r -p "$(echo -e "${CYAN}?${RESET} ${text} [${default}]: ")" input
     printf -v "$var" '%s' "${input:-$default}"
@@ -76,85 +195,72 @@ prompt() {
 }
 
 prompt_secret() {
-  local var="$1" ru="$2" en="$3"
-  local text
-  if [[ "$(_lang)" == "en" ]]; then text="$en"; else text="$ru"; fi
-  read -r -s -p "$(echo -e "${CYAN}?${RESET} ${text}: ")" input
+  local var="$1" key="$2"
+  read -r -s -p "$(echo -e "${CYAN}?${RESET} $(t "$key"): ")" input
   echo ""
   printf -v "$var" '%s' "$input"
 }
 
 # ── Password gate ────────────────────────────────────────────────────────────
 check_password() {
-  section "$(_msg "Проверка доступа" "Access verification")"
-  prompt_secret INPUT_PASSWORD \
-    "Введите пароль установки" \
-    "Enter installation password"
+  section "$(t access_check)"
+  prompt_secret INPUT_PASSWORD pwd_prompt
   local input_hash
   input_hash=$(echo -n "$INPUT_PASSWORD" | sha256sum | cut -d' ' -f1)
   unset INPUT_PASSWORD
-  if [[ "$input_hash" != "$CORRECT_HASH" ]]; then
-    fail "$(_msg "Неверный пароль" "Wrong password")"
-  fi
-  ok "$(_msg "Пароль принят" "Password accepted")"
+  [[ "$input_hash" == "$CORRECT_HASH" ]] || fail "$(t pwd_wrong)"
+  ok "$(t pwd_ok)"
 }
 
 # ── System requirements ──────────────────────────────────────────────────────
 check_requirements() {
-  section "$(_msg "Проверка системы" "System requirements")"
+  section "$(t sys_check)"
   local step_n=0 total=4
 
-  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(_msg "ОС" "OS")"
-  if [[ ! -f /etc/os-release ]]; then
-    fail "$(_msg "Не удалось определить ОС" "Cannot detect OS")"
-  fi
+  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(t label_os)"
+  [[ -f /etc/os-release ]] || fail "$(t os_unknown)"
+  # shellcheck source=/dev/null
   source /etc/os-release
   if [[ "${ID:-}" != "ubuntu" ]]; then
-    warn "$(_msg "Рекомендуется Ubuntu. Обнаружено: ${PRETTY_NAME:-unknown}" "Ubuntu recommended. Detected: ${PRETTY_NAME:-unknown}")"
+    warn "$(tf os_warn "${PRETTY_NAME:-unknown}")"
   else
     local ver_major="${VERSION_ID%%.*}"
-    if [[ "${ver_major:-0}" -lt 20 ]]; then
-      fail "$(_msg "Требуется Ubuntu 20.04+. Обнаружено: $VERSION_ID" "Ubuntu 20.04+ required. Found: $VERSION_ID")"
-    fi
+    [[ "${ver_major:-0}" -ge 20 ]] || fail "$(tf os_old "$VERSION_ID")"
     ok "Ubuntu $VERSION_ID"
   fi
 
-  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(_msg "Память" "RAM")"
+  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(t label_ram)"
   local ram_mb
   ram_mb=$(free -m | awk '/^Mem:/{print $2}')
-  if [[ "${ram_mb:-0}" -lt 900 ]]; then
-    fail "$(_msg "Минимум 1 ГБ RAM. Доступно: ${ram_mb} МБ" "Minimum 1 GB RAM. Available: ${ram_mb} MB")"
-  fi
-  ok "$(_msg "RAM: ${ram_mb} МБ" "RAM: ${ram_mb} MB")"
+  [[ "${ram_mb:-0}" -ge 900 ]] || fail "$(tf ram_low "$ram_mb")"
+  ok "$(tf ram_ok "$ram_mb")"
 
-  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(_msg "CPU" "CPU")"
+  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(t label_cpu)"
   local cpus
   cpus=$(nproc 2>/dev/null || echo 1)
-  ok "$(_msg "CPU: ${cpus} ядер" "CPU: ${cpus} cores")"
+  ok "$(tf cpu_ok "$cpus")"
 
-  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(_msg "Диск" "Disk")"
+  step_n=$((step_n + 1)); progress_bar "$step_n" "$total" "$(t label_disk)"
   local disk_free
   disk_free=$(df -BG / | awk 'NR==2{gsub(/G/,"",$4); print $4}')
   if [[ "${disk_free:-0}" -lt 5 ]]; then
-    warn "$(_msg "Мало места на диске: ${disk_free}G" "Low disk space: ${disk_free}G")"
+    warn "$(tf disk_low "$disk_free")"
   else
-    ok "$(_msg "Свободно: ${disk_free}G" "Free: ${disk_free}G")"
+    ok "$(tf disk_ok "$disk_free")"
   fi
 
-  if [[ $EUID -ne 0 ]]; then
-    fail "$(_msg "Запустите от root: sudo bash install.sh" "Run as root: sudo bash install.sh")"
-  fi
+  [[ $EUID -eq 0 ]] || fail "$(t need_root)"
 }
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 install_docker() {
-  section "$(_msg "Docker" "Docker")"
+  section "$(t docker_title)"
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    ok "$(_msg "Docker уже установлен: $(docker --version)" "Docker already installed: $(docker --version)")"
+    ok "$(tf docker_exists "$(docker --version)")"
     return
   fi
 
-  step "$(_msg "Установка Docker…" "Installing Docker…")"
+  step "$(t docker_install)"
   apt-get update -qq
   apt-get install -y -qq ca-certificates curl gnupg lsb-release git openssl
 
@@ -173,116 +279,79 @@ install_docker() {
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable docker
   systemctl start docker
-  ok "$(_msg "Docker установлен" "Docker installed")"
+  ok "$(t docker_ok)"
 }
 
 # ── Configuration prompts ────────────────────────────────────────────────────
 collect_config() {
-  section "$(_msg "Настройка" "Configuration")"
+  section "$(t config_title)"
 
-  prompt BOT_TOKEN \
-    "Токен бота Telegram (@BotFather)" \
-    "Telegram bot token (@BotFather)"
-  [[ -n "$BOT_TOKEN" ]] || fail "$(_msg "Токен обязателен" "Token is required")"
+  prompt BOT_TOKEN ask_bot_token
+  [[ -n "$BOT_TOKEN" ]] || fail "$(t token_required)"
 
-  prompt ADMIN_ID \
-    "Telegram ID администратора" \
-    "Admin Telegram ID"
-  [[ "$ADMIN_ID" =~ ^[0-9]+$ ]] || fail "$(_msg "Некорректный Telegram ID" "Invalid Telegram ID")"
+  prompt ADMIN_ID ask_admin_id
+  [[ "$ADMIN_ID" =~ ^[0-9]+$ ]] || fail "$(t admin_id_invalid)"
 
-  prompt SUB_DOMAIN \
-    "Домен подписки (например sub.example.com)" \
-    "Subscription domain (e.g. sub.example.com)"
+  prompt SUB_DOMAIN ask_sub_domain
   SUB_DOMAIN="${SUB_DOMAIN#https://}"; SUB_DOMAIN="${SUB_DOMAIN#http://}"; SUB_DOMAIN="${SUB_DOMAIN%%/*}"
 
   local base="${SUB_DOMAIN#*.}"
-  prompt APP_DOMAIN \
-    "Домен кабинета (например app.example.com)" \
-    "Cabinet domain (e.g. app.example.com)" \
-    "app.${base}"
-
-  prompt LANDING_DOMAIN \
-    "Домен лендинга (например example.com, Enter — пропустить)" \
-    "Landing domain (e.g. example.com, Enter to skip)" \
-    "$base"
-
-  prompt GITHUB_USER \
-    "GitHub username/org с приватным репозиторием бота" \
-    "GitHub username/org with private bot repo"
-
-  prompt BOT_REPO_NAME_INPUT \
-    "Имя репозитория бота" \
-    "Bot repository name" \
-    "$BOT_REPO_NAME"
+  prompt APP_DOMAIN ask_app_domain "app.${base}"
+  prompt LANDING_DOMAIN ask_landing "$base"
+  prompt GITHUB_USER ask_github_user
+  prompt BOT_REPO_NAME_INPUT ask_repo_name "$BOT_REPO_NAME"
   BOT_REPO_NAME="$BOT_REPO_NAME_INPUT"
 
   echo ""
-  echo -e "${MAGENTA}$(_msg "Выберите тип SSL:" "Choose SSL type:")${RESET}"
-  echo "  1) $(_msg "Let's Encrypt (ручной DNS на сервер)" "Let's Encrypt (manual DNS to server)")"
-  echo "  2) $(_msg "Cloudflare (Origin Certificate)" "Cloudflare (Origin Certificate)")"
-  prompt SSL_MODE \
-    "Вариант (1 или 2)" \
-    "Option (1 or 2)" \
-    "1"
+  echo -e "${MAGENTA}$(t ssl_choose)${RESET}"
+  echo "  1) $(t ssl_le)"
+  echo "  2) $(t ssl_cf)"
+  prompt SSL_MODE ssl_option "1"
 
   if [[ "$SSL_MODE" == "2" ]]; then
     SSL_TYPE="cloudflare"
-    prompt CF_CERT_PATH \
-      "Путь к Cloudflare Origin Certificate (fullchain.pem)" \
-      "Path to Cloudflare Origin Certificate (fullchain.pem)" \
-      "/root/cloudflare-origin.pem"
-    prompt CF_KEY_PATH \
-      "Путь к Cloudflare Origin Private Key (privkey.pem)" \
-      "Path to Cloudflare Origin Private Key (privkey.pem)" \
-      "/root/cloudflare-origin.key"
+    prompt CF_CERT_PATH ask_cf_cert "/root/cloudflare-origin.pem"
+    prompt CF_KEY_PATH ask_cf_key "/root/cloudflare-origin.key"
   else
     SSL_TYPE="manual"
-    prompt CERTBOT_EMAIL \
-      "Email для Let's Encrypt" \
-      "Email for Let's Encrypt" \
-      "admin@${base}"
+    prompt CERTBOT_EMAIL ask_certbot_mail "admin@${base}"
   fi
 
-  prompt DEPLOY_KEY_PATH_INPUT \
-    "Путь к deploy key для git clone" \
-    "Path to deploy key for git clone" \
-    "$DEPLOY_KEY_PATH"
+  prompt DEPLOY_KEY_PATH_INPUT ask_deploy_key "$DEPLOY_KEY_PATH"
   DEPLOY_KEY_PATH="$DEPLOY_KEY_PATH_INPUT"
 }
 
 # ── Deploy key & clone ───────────────────────────────────────────────────────
 setup_deploy_key() {
-  section "$(_msg "Deploy key" "Deploy key")"
+  section "$(t deploy_key_title)"
   if [[ ! -f "$DEPLOY_KEY_PATH" ]]; then
-    warn "$(_msg "Deploy key не найден: $DEPLOY_KEY_PATH" "Deploy key not found: $DEPLOY_KEY_PATH")"
-    prompt DEPLOY_KEY_PATH \
-      "Укажите путь к приватному ключу" \
-      "Specify private key path"
-    [[ -f "$DEPLOY_KEY_PATH" ]] || fail "$(_msg "Файл ключа не найден" "Key file not found")"
+    warn "$(tf deploy_key_miss "$DEPLOY_KEY_PATH")"
+    prompt DEPLOY_KEY_PATH ask_key_path
+    [[ -f "$DEPLOY_KEY_PATH" ]] || fail "$(t key_not_found)"
   fi
   chmod 600 "$DEPLOY_KEY_PATH"
-  ok "$(_msg "Deploy key: $DEPLOY_KEY_PATH" "Deploy key: $DEPLOY_KEY_PATH")"
+  ok "$(tf deploy_key_ok "$DEPLOY_KEY_PATH")"
 }
 
 clone_source() {
-  section "$(_msg "Загрузка исходников" "Fetching source code")"
+  section "$(t clone_title)"
   local repo_url="git@github.com:${GITHUB_USER}/${BOT_REPO_NAME}.git"
   export GIT_SSH_COMMAND="ssh -i ${DEPLOY_KEY_PATH} -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
 
   if [[ -d "$INSTALL_DIR/.git" ]]; then
-    warn "$(_msg "Каталог $INSTALL_DIR уже существует — обновление" "Directory $INSTALL_DIR exists — updating")"
+    warn "$(tf dir_exists "$INSTALL_DIR")"
     git -C "$INSTALL_DIR" pull --ff-only
   else
     mkdir -p "$(dirname "$INSTALL_DIR")"
-    step "$(_msg "Клонирование $repo_url …" "Cloning $repo_url …")"
+    step "$(tf cloning "$repo_url")"
     git clone "$repo_url" "$INSTALL_DIR"
   fi
-  ok "$(_msg "Исходники готовы" "Source code ready")"
+  ok "$(t source_ok)"
 }
 
 # ── .env generation ──────────────────────────────────────────────────────────
 generate_env() {
-  section "$(_msg "Генерация .env" "Generating .env")"
+  section "$(t env_title)"
   local pg_pass admin_secret
   pg_pass=$(openssl rand -hex 16)
   admin_secret=$(openssl rand -hex 24)
@@ -319,14 +388,14 @@ DEFAULT_LANGUAGE=ru
 LOG_LEVEL=INFO
 EOF
   chmod 600 "$INSTALL_DIR/.env"
-  ok "$(_msg ".env создан" ".env created")"
+  ok "$(t env_ok)"
   info "SUBSCRIPTION_BASE_URL=https://${SUB_DOMAIN}"
   info "ADMIN_PATH_SECRET=${admin_secret}"
 }
 
 # ── nginx config ─────────────────────────────────────────────────────────────
 write_nginx_config() {
-  section "$(_msg "Nginx" "Nginx")"
+  section "$(t nginx_title)"
   mkdir -p "$INSTALL_DIR/nginx/certs" "$INSTALL_DIR/backups"
   touch "$INSTALL_DIR/nginx/certs/.gitkeep"
 
@@ -472,30 +541,28 @@ server {
     location / { return 301 https://\$host\$request_uri; }
 }
 EOF
-  ok "$(_msg "nginx.conf создан" "nginx.conf created")"
+  ok "$(t nginx_ok)"
 }
 
 # ── SSL ──────────────────────────────────────────────────────────────────────
 setup_ssl() {
-  section "$(_msg "SSL-сертификаты" "SSL certificates")"
+  section "$(t ssl_title)"
   local cert_dir="$INSTALL_DIR/nginx/certs"
 
   if [[ "$SSL_TYPE" == "cloudflare" ]]; then
-    [[ -f "$CF_CERT_PATH" && -f "$CF_KEY_PATH" ]] || fail "$(_msg "Cloudflare сертификаты не найдены" "Cloudflare certificates not found")"
+    [[ -f "$CF_CERT_PATH" && -f "$CF_KEY_PATH" ]] || fail "$(t cf_not_found)"
     cp "$CF_CERT_PATH" "$cert_dir/fullchain.pem"
     cp "$CF_KEY_PATH" "$cert_dir/privkey.pem"
     chmod 600 "$cert_dir/privkey.pem"
-    ok "$(_msg "Cloudflare Origin Certificate установлен" "Cloudflare Origin Certificate installed")"
+    ok "$(t cf_ok)"
     return
   fi
 
-  # Manual Let's Encrypt
   apt-get install -y -qq certbot
   mkdir -p /var/www/certbot
 
-  # Temporary self-signed cert so nginx can start before LE
   if [[ ! -f "$cert_dir/fullchain.pem" ]]; then
-    step "$(_msg "Временный self-signed сертификат…" "Temporary self-signed certificate…")"
+    step "$(t temp_cert)"
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
       -keyout "$cert_dir/privkey.pem" \
       -out "$cert_dir/fullchain.pem" \
@@ -505,10 +572,9 @@ setup_ssl() {
   local domains=("-d" "$SUB_DOMAIN" "-d" "$APP_DOMAIN")
   [[ -n "${LANDING_DOMAIN:-}" ]] && domains+=("-d" "$LANDING_DOMAIN" "-d" "www.${LANDING_DOMAIN}")
 
-  step "$(_msg "Запрос Let's Encrypt…" "Requesting Let's Encrypt…")"
-  info "$(_msg "Убедитесь, что DNS указывает на этот сервер" "Ensure DNS points to this server")"
+  step "$(t le_request)"
+  info "$(t dns_hint)"
 
-  # Stop nginx container if running for standalone
   docker compose -f "$INSTALL_DIR/docker-compose.yml" stop nginx 2>/dev/null || true
 
   if certbot certonly --standalone --non-interactive --agree-tos \
@@ -517,32 +583,31 @@ setup_ssl() {
     cp "/etc/letsencrypt/live/${SUB_DOMAIN}/fullchain.pem" "$cert_dir/fullchain.pem"
     cp "/etc/letsencrypt/live/${SUB_DOMAIN}/privkey.pem" "$cert_dir/privkey.pem"
     chmod 600 "$cert_dir/privkey.pem"
-    ok "$(_msg "Let's Encrypt сертификат получен" "Let's Encrypt certificate obtained")"
+    ok "$(t le_ok)"
 
-    # Auto-renew hook
     cat > /etc/cron.d/zenyun-certbot <<CRON
 0 3 * * * root certbot renew --quiet --deploy-hook "cp /etc/letsencrypt/live/${SUB_DOMAIN}/fullchain.pem ${cert_dir}/fullchain.pem && cp /etc/letsencrypt/live/${SUB_DOMAIN}/privkey.pem ${cert_dir}/privkey.pem && docker compose -f ${INSTALL_DIR}/docker-compose.yml exec nginx nginx -s reload"
 CRON
   else
-    warn "$(_msg "Certbot не смог получить сертификат — используется временный" "Certbot failed — using temporary cert")"
-    warn "$(_msg "Запустите certbot вручную после настройки DNS" "Run certbot manually after DNS is configured")"
+    warn "$(t le_fail)"
+    warn "$(t le_manual)"
   fi
 }
 
 # ── Docker Compose ───────────────────────────────────────────────────────────
 start_services() {
-  section "$(_msg "Запуск сервисов" "Starting services")"
+  section "$(t start_title)"
   cd "$INSTALL_DIR"
 
-  step "$(_msg "Сборка образов (это может занять несколько минут)…" "Building images (may take a few minutes)…")"
+  step "$(t build_images)"
   docker compose up -d --build
-  ok "$(_msg "Контейнеры запущены" "Containers started")"
+  ok "$(t containers_ok)"
 
-  step "$(_msg "Ожидание готовности…" "Waiting for readiness…")"
+  step "$(t wait_ready)"
   local i
   for i in $(seq 1 30); do
     if docker compose exec -T db pg_isready -U vpnbot >/dev/null 2>&1; then
-      ok "$(_msg "PostgreSQL готов" "PostgreSQL ready")"
+      ok "$(t pg_ready)"
       break
     fi
     sleep 2
@@ -557,42 +622,43 @@ install_backup_cron() {
     local cron_line="0 3 * * * root ${INSTALL_DIR}/backup.sh >> /var/log/zenyun-backup.log 2>&1"
     grep -qF "zenyun-backup" /etc/cron.d/zenyun-backup 2>/dev/null || \
       echo "$cron_line" > /etc/cron.d/zenyun-backup
-    ok "$(_msg "Cron бэкапа настроен (03:00)" "Backup cron configured (03:00)")"
+    ok "$(t backup_cron)"
   fi
 }
 
 # ── Final status ─────────────────────────────────────────────────────────────
 show_final_status() {
-  section "$(_msg "🎉 Установка завершена!" "🎉 Installation complete!")"
+  section "$(t done_title)"
   local admin_secret
   admin_secret=$(grep ADMIN_PATH_SECRET "$INSTALL_DIR/.env" | cut -d= -f2)
 
-  echo -e "${GREEN}${BOLD}$(_msg "Доступные URL:" "Access URLs:")${RESET}"
+  echo -e "${GREEN}${BOLD}$(t urls_title)${RESET}"
   echo ""
-  echo -e "  📱 $(_msg "Mini App (подписка)" "Mini App (subscription)")"
+  echo -e "  📱 $(t url_miniapp)"
   echo -e "     ${CYAN}https://${SUB_DOMAIN}/app${RESET}"
   echo ""
-  echo -e "  🔗 $(_msg "Подписка" "Subscription endpoint")"
+  echo -e "  🔗 $(t url_sub)"
   echo -e "     ${CYAN}https://${SUB_DOMAIN}/sub/{token}${RESET}"
   echo ""
-  echo -e "  🖥  $(_msg "Веб-кабинет" "Web cabinet")"
+  echo -e "  🖥  $(t url_cabinet)"
   echo -e "     ${CYAN}https://${APP_DOMAIN}/${RESET}"
   echo ""
-  echo -e "  🔐 $(_msg "Секретная админ-панель" "Secret admin panel")"
+  echo -e "  🔐 $(t url_admin)"
   echo -e "     ${CYAN}https://${APP_DOMAIN}/a/${admin_secret}${RESET}"
   echo ""
-  echo -e "${YELLOW}$(_msg "Следующие шаги в @BotFather:" "Next steps in @BotFather:")${RESET}"
+  echo -e "${YELLOW}$(t botfather_title)${RESET}"
   echo "  1. /mybots → Bot Settings → Configure Mini App"
   echo "     URL: https://${SUB_DOMAIN}/app"
   echo "  2. Bot Settings → Menu Button → https://${SUB_DOMAIN}/app"
   echo ""
-  echo -e "${DIM}$(_msg "Логи: docker compose -f ${INSTALL_DIR}/docker-compose.yml logs -f bot web" "Logs: docker compose -f ${INSTALL_DIR}/docker-compose.yml logs -f bot web")${RESET}"
-  echo -e "${DIM}$(_msg "Поддержка: @zenyuntestbot" "Support: @zenyuntestbot")${RESET}"
+  echo -e "${DIM}$(tf logs_hint "$INSTALL_DIR")${RESET}"
+  echo -e "${DIM}$(t support)${RESET}"
   echo ""
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 main() {
+  choose_lang
   banner
   check_password
   check_requirements
