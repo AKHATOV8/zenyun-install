@@ -16,7 +16,7 @@ set -euo pipefail
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.0.0/zenyun-vpn.tar.gz"
+PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.1.0/zenyun-vpn-v1.1.tar.gz"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
 
