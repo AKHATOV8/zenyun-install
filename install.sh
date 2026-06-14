@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # ZenyunVPN — automated VPS installer
-# Usage: curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
-set -euo pipefail
+# Usage: curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh
 
-# Force read from terminal (works with curl | bash)
-if [ -t 0 ]; then
-  TTY_INPUT="/dev/stdin"
-else
-  TTY_INPUT="/dev/tty"
+if [ ! -t 0 ]; then
+  echo ""
+  echo "⚠️  Please run the installer this way:"
+  echo ""
+  echo "  curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh"
+  echo ""
+  exit 1
 fi
+
+set -euo pipefail
 
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="b0aef10571e26a3c3958c01e2c3c85d17e3eb6e55ddfd1a4bbffc2fb4e0ebe09"
@@ -133,7 +136,7 @@ choose_lang() {
   echo "  2) English"
   echo "  3) 中文"
   printf "Enter choice [1-3]: "
-  read LANG_CHOICE < "$TTY_INPUT"
+  read -r LANG_CHOICE
 
   case "$LANG_CHOICE" in
     1) ZENYUN_LANG="ru" ;;
@@ -180,11 +183,11 @@ prompt() {
   local text; text="$(t "$key")"
   if [[ -n "$default" ]]; then
     printf "? %s [%s]: " "$text" "$default"
-    read -r input < "$TTY_INPUT"
+    read -r input
     printf -v "$var" '%s' "${input:-$default}"
   else
     printf "? %s: " "$text"
-    read -r input < "$TTY_INPUT"
+    read -r input
     printf -v "$var" '%s' "$input"
   fi
 }
@@ -192,7 +195,7 @@ prompt() {
 prompt_secret() {
   local var="$1" key="$2"
   printf "? %s: " "$(t "$key")"
-  read -r -s input < "$TTY_INPUT"
+  read -r -s input
   echo ""
   printf -v "$var" '%s' "$input"
 }

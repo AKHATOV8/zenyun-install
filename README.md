@@ -15,10 +15,10 @@
 ### Быстрая установка
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh
 ```
 
-При запуске скрипт предложит выбрать язык: **Русский / English / 中文**.
+> Не используйте `curl … | bash` — интерактивный ввод не работает через pipe.
 
 ### Требования
 
@@ -94,8 +94,10 @@ Repository: `AKHATOV8/zenyun-install` (private)
 ### Quick install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh
 ```
+
+> Do not use `curl … | bash` — interactive prompts do not work through a pipe.
 
 On startup the script asks you to choose a language: **Русский / English / 中文**.
 
@@ -183,8 +185,10 @@ Telegram: [@zenyuntestbot](https://t.me/zenyuntestbot)
 ### 快速安装
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh
 ```
+
+> 请勿使用 `curl … | bash` — 通过管道运行时无法进行交互输入。
 
 启动时脚本会提示选择语言：**Русский / English / 中文**。
 
