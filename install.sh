@@ -16,7 +16,7 @@ set -euo pipefail
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-PACKAGE_URL="https://sub.zenyun.net/install/package.tar.gz"
+PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.0.0/zenyun-vpn.tar.gz"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
 
@@ -316,16 +316,15 @@ collect_config() {
 download_package() {
   section "$(t download_title)"
   local archive="/tmp/zenyun-vpn.tar.gz"
-  local url="${PACKAGE_URL}?token=${CORRECT_HASH}"
 
   step "$(t downloading)"
-  if ! wget -q -O "$archive" "$url"; then
+  if ! wget -q -O "$archive" "$PACKAGE_URL"; then
     rm -f "$archive"
     fail "$(t download_fail)"
   fi
 
-  mkdir -p /home
-  tar -xzf "$archive" -C /home/
+  mkdir -p "$INSTALL_DIR"
+  tar -xzf "$archive" -C "$INSTALL_DIR"
   rm -f "$archive"
 
   [[ -d "$INSTALL_DIR" ]] || fail "$(t download_fail)"
