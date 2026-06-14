@@ -68,6 +68,11 @@ t() {
     config_title)     ru="Настройка"; en="Configuration"; zh="配置" ;;
     ask_bot_token)    ru="Токен бота Telegram (@BotFather)"; en="Telegram bot token (@BotFather)"; zh="Telegram 机器人令牌 (@BotFather)" ;;
     token_required)   ru="Токен обязателен"; en="Token is required"; zh="令牌为必填项" ;;
+    ask_project_name) ru="Название проекта (например MyVPN)"; en="Project name (e.g. MyVPN)"; zh="项目名称（例如 MyVPN）" ;;
+    project_branding_title) ru="Брендинг проекта"; en="Project branding"; zh="项目品牌" ;;
+    project_branding_apply) ru="Замена названия в файлах проекта…"; en="Applying project name to project files…"; zh="正在将项目名称应用到项目文件…" ;;
+    project_branding_ok) ru="Название проекта применено"; en="Project name applied"; zh="项目名称已应用" ;;
+    project_yours)    ru="Ваш проект: %s"; en="Your project: %s"; zh="您的项目：%s" ;;
     ask_admin_id)     ru="Telegram ID администратора"; en="Admin Telegram ID"; zh="管理员 Telegram ID" ;;
     admin_id_invalid) ru="Некорректный Telegram ID"; en="Invalid Telegram ID"; zh="Telegram ID 无效" ;;
     ask_sub_domain)   ru="Домен подписки (например sub.example.com)"; en="Subscription domain (e.g. sub.example.com)"; zh="订阅域名（例如 sub.example.com）" ;;
@@ -285,6 +290,10 @@ collect_config() {
   prompt BOT_TOKEN ask_bot_token
   [[ -n "$BOT_TOKEN" ]] || fail "$(t token_required)"
 
+  prompt PROJECT_NAME ask_project_name "ZenyunVPN"
+  PROJECT_NAME=$(echo "$PROJECT_NAME" | tr -cd '[:alnum:][:space:]-')
+  [[ -n "$PROJECT_NAME" ]] || PROJECT_NAME="ZenyunVPN"
+
   prompt ADMIN_ID ask_admin_id
   [[ "$ADMIN_ID" =~ ^[0-9]+$ ]] || fail "$(t admin_id_invalid)"
 
@@ -340,6 +349,26 @@ download_package() {
   ok "$(t source_ok)"
 }
 
+# ── Apply project name branding ──────────────────────────────────────────────
+apply_project_name() {
+  section "$(t project_branding_title)"
+  step "$(t project_branding_apply)"
+
+  local PROJECT_LOWER file
+  PROJECT_LOWER=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+
+  while IFS= read -r -d '' file; do
+    sed -i \
+      -e "s/ZenyunVPN/${PROJECT_NAME}/g" \
+      -e "s/Zenyun VPN/${PROJECT_NAME}/g" \
+      -e "s/zenyunvpn/${PROJECT_LOWER}/g" \
+      -e "s/ZenYun/${PROJECT_NAME}/g" \
+      "$file"
+  done < <(find "$INSTALL_DIR" -type f \( -name "*.html" -o -name "*.js" -o -name "*.py" -o -name "*.yml" \) -print0)
+
+  ok "$(t project_branding_ok)"
+}
+
 # ── .env generation ──────────────────────────────────────────────────────────
 generate_env() {
   section "$(t env_title)"
@@ -348,10 +377,11 @@ generate_env() {
   admin_secret=$(openssl rand -hex 24)
 
   cat > "$INSTALL_DIR/.env" <<EOF
-# ============ ZenyunVPN — auto-generated $(date -Iseconds) ============
+# ============ ${PROJECT_NAME} — auto-generated $(date -Iseconds) ============
 BOT_TOKEN=${BOT_TOKEN}
 ADMIN_IDS=${ADMIN_ID}
 ADMIN_LOG_CHANNEL_ID=
+PROJECT_NAME=${PROJECT_NAME}
 
 DATABASE_URL=postgresql+asyncpg://vpnbot:${pg_pass}@db:5432/vpnbot
 REDIS_URL=redis://redis:6379/0
@@ -631,6 +661,8 @@ show_final_status() {
     [[ -n "$bot_username" ]] && bot_link="https://t.me/${bot_username}"
   fi
 
+  echo -e "${GREEN}${BOLD}$(tf project_yours "$PROJECT_NAME")${RESET}"
+  echo ""
   echo -e "${GREEN}${BOLD}$(t urls_title)${RESET}"
   echo ""
   echo -e "  📱 $(t url_miniapp)"
@@ -663,6 +695,7 @@ run_automatic_install() {
   install_system_packages
   install_docker
   download_package
+  apply_project_name
   generate_env
   prepare_docker_web_port
   write_nginx_config
