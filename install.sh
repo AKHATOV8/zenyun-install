@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ZenyunVPN — automated VPS installer
 # Usage: curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
+[[ -e /dev/tty ]] && exec < /dev/tty
 set -euo pipefail
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -141,7 +142,7 @@ choose_lang() {
   echo "  1) Русский"
   echo "  2) English"
   echo "  3) 中文"
-  read -r -p "$(echo -e "${CYAN}?${RESET} $(t lang_choice) [${default_choice}]: ")" choice
+  read -r -p "$(echo -e "${CYAN}?${RESET} $(t lang_choice) [${default_choice}]: ")" choice </dev/tty
   choice="${choice:-$default_choice}"
   case "$choice" in
     1|ru|RU) ZENYUN_LANG="ru" ;;
@@ -186,17 +187,17 @@ prompt() {
   local var="$1" key="$2" default="${3:-}"
   local text; text="$(t "$key")"
   if [[ -n "$default" ]]; then
-    read -r -p "$(echo -e "${CYAN}?${RESET} ${text} [${default}]: ")" input
+    read -r -p "$(echo -e "${CYAN}?${RESET} ${text} [${default}]: ")" input </dev/tty
     printf -v "$var" '%s' "${input:-$default}"
   else
-    read -r -p "$(echo -e "${CYAN}?${RESET} ${text}: ")" input
+    read -r -p "$(echo -e "${CYAN}?${RESET} ${text}: ")" input </dev/tty
     printf -v "$var" '%s' "$input"
   fi
 }
 
 prompt_secret() {
   local var="$1" key="$2"
-  read -r -s -p "$(echo -e "${CYAN}?${RESET} $(t "$key"): ")" input
+  read -r -s -p "$(echo -e "${CYAN}?${RESET} $(t "$key"): ")" input </dev/tty
   echo ""
   printf -v "$var" '%s' "$input"
 }
