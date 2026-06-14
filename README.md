@@ -5,10 +5,10 @@ Private installer for deploying [ZenyunVPN](https://t.me/zenyuntestbot) on a VPS
 ## Quick install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/zenyun-install/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh | bash
 ```
 
-> Replace `YOUR_USERNAME` with your GitHub username after the repo is created.
+> Repository: `AKHATOV8/zenyun-install` (private)
 
 ## Requirements
 
@@ -76,7 +76,7 @@ The script uses `certbot --standalone` to obtain certificates.
 
 ```bash
 cd /home/vpnbot
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/zenyun-install/main/check-update.sh -o check-update.sh
+curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/check-update.sh -o check-update.sh
 chmod +x check-update.sh
 bash check-update.sh
 ```
