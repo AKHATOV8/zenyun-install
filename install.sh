@@ -55,10 +55,16 @@ t() {
     disk_low)         ru="Мало места на диске: %sG"; en="Low disk space: %sG"; zh="磁盘空间不足：%sG" ;;
     disk_ok)          ru="Свободно: %sG"; en="Free: %sG"; zh="可用空间：%sG" ;;
     need_root)        ru="Запустите от root: sudo bash install.sh"; en="Run as root: sudo bash install.sh"; zh="请使用 root 运行：sudo bash install.sh" ;;
+    packages_title)   ru="Системные пакеты"; en="System packages"; zh="系统软件包" ;;
+    packages_install) ru="Обновление и установка пакетов…"; en="Updating and installing packages…"; zh="正在更新并安装软件包…" ;;
+    packages_ok)      ru="Системные пакеты установлены"; en="System packages installed"; zh="系统软件包已安装" ;;
     docker_title)     ru="Docker"; en="Docker"; zh="Docker" ;;
     docker_exists)    ru="Docker уже установлен: %s"; en="Docker already installed: %s"; zh="Docker 已安装：%s" ;;
     docker_install)   ru="Установка Docker…"; en="Installing Docker…"; zh="正在安装 Docker…" ;;
     docker_ok)        ru="Docker установлен"; en="Docker installed"; zh="Docker 安装完成" ;;
+    compose_install)  ru="Установка Docker Compose plugin…"; en="Installing Docker Compose plugin…"; zh="正在安装 Docker Compose 插件…" ;;
+    compose_ok)       ru="Docker Compose готов"; en="Docker Compose ready"; zh="Docker Compose 已就绪" ;;
+    auto_title)       ru="Автоматическая установка"; en="Automatic installation"; zh="自动安装" ;;
     config_title)     ru="Настройка"; en="Configuration"; zh="配置" ;;
     ask_bot_token)    ru="Токен бота Telegram (@BotFather)"; en="Telegram bot token (@BotFather)"; zh="Telegram 机器人令牌 (@BotFather)" ;;
     token_required)   ru="Токен обязателен"; en="Token is required"; zh="令牌为必填项" ;;
@@ -99,6 +105,7 @@ t() {
     url_sub)          ru="Подписка"; en="Subscription endpoint"; zh="订阅端点" ;;
     url_cabinet)      ru="Веб-кабинет"; en="Web cabinet"; zh="网页用户中心" ;;
     url_admin)        ru="Секретная админ-панель"; en="Secret admin panel"; zh="秘密管理面板" ;;
+    url_bot)          ru="Telegram бот"; en="Telegram bot"; zh="Telegram 机器人" ;;
     botfather_title)  ru="Следующие шаги в @BotFather:"; en="Next steps in @BotFather:"; zh="@BotFather 后续步骤：" ;;
     logs_hint)        ru="Логи: docker compose -f %s/docker-compose.yml logs -f bot web"; en="Logs: docker compose -f %s/docker-compose.yml logs -f bot web"; zh="日志：docker compose -f %s/docker-compose.yml logs -f bot web" ;;
     support)          ru="Поддержка: @zenyuntestbot"; en="Support: @zenyuntestbot"; zh="技术支持：@zenyuntestbot" ;;
@@ -238,34 +245,37 @@ check_requirements() {
   [[ $EUID -eq 0 ]] || fail "$(t need_root)"
 }
 
-# ── Docker ───────────────────────────────────────────────────────────────────
+# ── Automatic install (no prompts after config) ──────────────────────────────
+install_system_packages() {
+  section "$(t packages_title)"
+  export DEBIAN_FRONTEND=noninteractive
+  step "$(t packages_install)"
+  apt-get update -y
+  apt-get upgrade -y
+  apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx openssl tar
+  systemctl enable nginx
+  ok "$(t packages_ok)"
+}
+
 install_docker() {
   section "$(t docker_title)"
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1; then
     ok "$(tf docker_exists "$(docker --version)")"
-    return
+  else
+    step "$(t docker_install)"
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable docker
+    systemctl start docker
+    ok "$(t docker_ok)"
   fi
 
-  step "$(t docker_install)"
-  apt-get update -qq
-  apt-get install -y -qq ca-certificates curl gnupg lsb-release wget openssl tar
-
-  install -m 0755 -d /etc/apt/keyrings
-  if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
+  if docker compose version >/dev/null 2>&1; then
+    ok "$(t compose_ok)"
+  else
+    step "$(t compose_install)"
+    apt-get install -y docker-compose-plugin
+    ok "$(t compose_ok)"
   fi
-
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-    > /etc/apt/sources.list.d/docker.list
-
-  apt-get update -qq
-  apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  systemctl enable docker
-  systemctl start docker
-  ok "$(t docker_ok)"
 }
 
 # ── Configuration prompts ────────────────────────────────────────────────────
@@ -343,6 +353,7 @@ POSTGRES_PASSWORD=${pg_pass}
 POSTGRES_DB=vpnbot
 
 SUBSCRIPTION_BASE_URL=https://${SUB_DOMAIN}
+APP_DOMAIN=${APP_DOMAIN}
 
 ALIPAY_ACCOUNT=
 WECHAT_ACCOUNT=
@@ -366,155 +377,165 @@ EOF
   info "ADMIN_PATH_SECRET=${admin_secret}"
 }
 
-# ── nginx config ─────────────────────────────────────────────────────────────
+# ── nginx config (host + project certs) ────────────────────────────────────────
 write_nginx_config() {
   section "$(t nginx_title)"
   mkdir -p "$INSTALL_DIR/nginx/certs" "$INSTALL_DIR/backups"
   touch "$INSTALL_DIR/nginx/certs/.gitkeep"
 
-  local landing_block=""
-  if [[ -n "${LANDING_DOMAIN:-}" ]]; then
-    landing_block=$(cat <<LANDING
+  local cabinet_root="${INSTALL_DIR}/web/static/cabinet"
+  local ssl_cert="${1:-}"
+  local ssl_key="${2:-}"
+  local app_listen sub_listen ssl_directives=""
+  local http_redirect=""
 
-# ── Landing — ${LANDING_DOMAIN} ────────────────────────────────────────────
-server {
-    listen 80;
-    listen 443 ssl;
-    http2 on;
-    server_name www.${LANDING_DOMAIN};
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
-    return 301 https://${LANDING_DOMAIN}\$request_uri;
-}
-
-server {
-    listen 80;
-    listen 443 ssl;
-    http2 on;
-    server_name ${LANDING_DOMAIN};
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+  if [[ -n "$ssl_cert" && -n "$ssl_key" ]]; then
+    app_listen="    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;"
+    sub_listen="$app_listen"
+    ssl_directives="    ssl_certificate     ${ssl_cert};
+    ssl_certificate_key ${ssl_key};
     ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
-    root /usr/share/nginx/landing;
-    index index.html;
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    location / { try_files \$uri \$uri/ /index.html; }
+    ssl_ciphers         HIGH:!aNULL:!MD5;"
+    http_redirect="
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${APP_DOMAIN} ${SUB_DOMAIN};
+    return 301 https://\$host\$request_uri;
 }
-LANDING
-)
+"
+  else
+    app_listen="    listen 80;
+    listen [::]:80;"
+    sub_listen="$app_listen"
   fi
 
-  cat > "$INSTALL_DIR/nginx/nginx.conf" <<EOF
+  cat > /etc/nginx/sites-available/zenyunvpn <<EOF
 # ZenyunVPN — generated by zenyun-install
-
+${http_redirect}
 server {
-    listen 80;
-    listen 443 ssl default_server;
-    http2 on;
+${app_listen}
     server_name ${APP_DOMAIN};
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+${ssl_directives}
     client_max_body_size 50m;
-    resolver 127.0.0.11 valid=30s ipv6=off;
 
     location /api/ {
-        set \$api_backend web:8000;
-        proxy_pass http://\$api_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header CF-Connecting-IP \$http_cf_connecting_ip;
         proxy_read_timeout 120s;
     }
     location /static/ {
-        set \$static_backend web:8000;
-        proxy_pass http://\$static_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
     location ~ ^/a/[^/]+\$ {
-        set \$admin_backend web:8000;
-        proxy_pass http://\$admin_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto \$scheme;
         add_header Cache-Control "no-store" always;
     }
-    location = / { root /usr/share/nginx/cabinet; try_files /index.html =404; add_header Cache-Control "no-store" always; }
-    location /health { set \$h web:8000; proxy_pass http://\$h; }
-    location / { root /usr/share/nginx/cabinet; try_files \$uri /index.html; add_header Cache-Control "no-store" always; }
+    location = / {
+        root ${cabinet_root};
+        try_files /index.html =404;
+        add_header Cache-Control "no-store" always;
+    }
+    location /health {
+        proxy_pass http://127.0.0.1:8000;
+    }
+    location / {
+        root ${cabinet_root};
+        try_files \$uri /index.html;
+        add_header Cache-Control "no-store" always;
+    }
 }
 
 server {
-    listen 80;
-    listen 443 ssl;
-    http2 on;
+${sub_listen}
     server_name ${SUB_DOMAIN};
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+${ssl_directives}
     client_max_body_size 50m;
-    resolver 127.0.0.11 valid=30s ipv6=off;
 
     location /sub/ {
-        set \$sub_backend web:8000;
-        proxy_pass http://\$sub_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header CF-Connecting-IP \$http_cf_connecting_ip;
     }
     location = /app {
-        set \$app_backend web:8000;
-        proxy_pass http://\$app_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header CF-Connecting-IP \$http_cf_connecting_ip;
     }
     location = /admin-app {
-        set \$adminapp_backend web:8000;
-        proxy_pass http://\$adminapp_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
     location /sub-app/ {
-        set \$subapp_backend web:8000;
-        proxy_pass http://\$subapp_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
     location /static/ {
-        set \$static_backend web:8000;
-        proxy_pass http://\$static_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
     location /api/ {
-        set \$api_backend web:8000;
-        proxy_pass http://\$api_backend;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 120s;
         client_max_body_size 50m;
     }
-    location /health { set \$h web:8000; proxy_pass http://\$h; }
-}
-${landing_block}
-
-server {
-    listen 80 default_server;
-    server_name _;
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    location / { return 301 https://\$host\$request_uri; }
+    location /install/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location /health {
+        proxy_pass http://127.0.0.1:8000;
+    }
 }
 EOF
+
+  rm -f /etc/nginx/sites-enabled/default
+  ln -sf /etc/nginx/sites-available/zenyunvpn /etc/nginx/sites-enabled/zenyunvpn
+  nginx -t
+  systemctl enable nginx
+  systemctl restart nginx
   ok "$(t nginx_ok)"
+}
+
+prepare_docker_web_port() {
+  cat > "$INSTALL_DIR/docker-compose.override.yml" <<EOF
+# Generated by zenyun-install — expose web for host nginx
+services:
+  web:
+    ports:
+      - "127.0.0.1:8000:8000"
+  nginx:
+    profiles:
+      - donotstart
+EOF
+}
+
+sync_certs_to_project() {
+  local cert_dir="$INSTALL_DIR/nginx/certs"
+  if [[ -f /etc/letsencrypt/live/${SUB_DOMAIN}/fullchain.pem ]]; then
+    cp "/etc/letsencrypt/live/${SUB_DOMAIN}/fullchain.pem" "$cert_dir/fullchain.pem"
+    cp "/etc/letsencrypt/live/${SUB_DOMAIN}/privkey.pem" "$cert_dir/privkey.pem"
+    chmod 600 "$cert_dir/privkey.pem"
+  fi
 }
 
 # ── SSL ──────────────────────────────────────────────────────────────────────
@@ -527,39 +548,28 @@ setup_ssl() {
     cp "$CF_CERT_PATH" "$cert_dir/fullchain.pem"
     cp "$CF_KEY_PATH" "$cert_dir/privkey.pem"
     chmod 600 "$cert_dir/privkey.pem"
+    mkdir -p /etc/nginx/ssl
+    cp "$CF_CERT_PATH" /etc/nginx/ssl/fullchain.pem
+    cp "$CF_KEY_PATH" /etc/nginx/ssl/privkey.pem
+    chmod 600 /etc/nginx/ssl/privkey.pem
+    write_nginx_config /etc/nginx/ssl/fullchain.pem /etc/nginx/ssl/privkey.pem
     ok "$(t cf_ok)"
     return
   fi
 
-  apt-get install -y -qq certbot
-  mkdir -p /var/www/certbot
-
-  if [[ ! -f "$cert_dir/fullchain.pem" ]]; then
-    step "$(t temp_cert)"
-    openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-      -keyout "$cert_dir/privkey.pem" \
-      -out "$cert_dir/fullchain.pem" \
-      -subj "/CN=${SUB_DOMAIN}" 2>/dev/null
-  fi
-
-  local domains=("-d" "$SUB_DOMAIN" "-d" "$APP_DOMAIN")
-  [[ -n "${LANDING_DOMAIN:-}" ]] && domains+=("-d" "$LANDING_DOMAIN" "-d" "www.${LANDING_DOMAIN}")
-
   step "$(t le_request)"
   info "$(t dns_hint)"
 
-  docker compose -f "$INSTALL_DIR/docker-compose.yml" stop nginx 2>/dev/null || true
-
-  if certbot certonly --standalone --non-interactive --agree-tos \
+  if certbot --nginx \
+      -d "$SUB_DOMAIN" -d "$APP_DOMAIN" \
+      --non-interactive --agree-tos \
       -m "${CERTBOT_EMAIL:-$CERTBOT_EMAIL_DEFAULT}" \
-      "${domains[@]}"; then
-    cp "/etc/letsencrypt/live/${SUB_DOMAIN}/fullchain.pem" "$cert_dir/fullchain.pem"
-    cp "/etc/letsencrypt/live/${SUB_DOMAIN}/privkey.pem" "$cert_dir/privkey.pem"
-    chmod 600 "$cert_dir/privkey.pem"
+      --redirect; then
+    sync_certs_to_project
+    systemctl reload nginx
     ok "$(t le_ok)"
-
     cat > /etc/cron.d/zenyun-certbot <<CRON
-0 3 * * * root certbot renew --quiet --deploy-hook "cp /etc/letsencrypt/live/${SUB_DOMAIN}/fullchain.pem ${cert_dir}/fullchain.pem && cp /etc/letsencrypt/live/${SUB_DOMAIN}/privkey.pem ${cert_dir}/privkey.pem && docker compose -f ${INSTALL_DIR}/docker-compose.yml exec nginx nginx -s reload"
+0 3 * * * root certbot renew --quiet --deploy-hook "systemctl reload nginx"
 CRON
   else
     warn "$(t le_fail)"
@@ -573,7 +583,7 @@ start_services() {
   cd "$INSTALL_DIR"
 
   step "$(t build_images)"
-  docker compose up -d --build
+  docker compose up -d --build db redis bot web
   ok "$(t containers_ok)"
 
   step "$(t wait_ready)"
@@ -586,6 +596,7 @@ start_services() {
     sleep 2
   done
 
+  systemctl restart nginx
   docker compose ps
 }
 
@@ -602,8 +613,15 @@ install_backup_cron() {
 # ── Final status ─────────────────────────────────────────────────────────────
 show_final_status() {
   section "$(t done_title)"
-  local admin_secret
+  local admin_secret bot_link="https://t.me/zenyuntestbot"
   admin_secret=$(grep ADMIN_PATH_SECRET "$INSTALL_DIR/.env" | cut -d= -f2)
+
+  if [[ -n "${BOT_TOKEN:-}" ]]; then
+    local bot_username
+    bot_username=$(curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/getMe" 2>/dev/null \
+      | grep -o '"username":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+    [[ -n "$bot_username" ]] && bot_link="https://t.me/${bot_username}"
+  fi
 
   echo -e "${GREEN}${BOLD}$(t urls_title)${RESET}"
   echo ""
@@ -619,6 +637,9 @@ show_final_status() {
   echo -e "  🔐 $(t url_admin)"
   echo -e "     ${CYAN}https://${APP_DOMAIN}/a/${admin_secret}${RESET}"
   echo ""
+  echo -e "  🤖 $(t url_bot)"
+  echo -e "     ${CYAN}${bot_link}${RESET}"
+  echo ""
   echo -e "${YELLOW}$(t botfather_title)${RESET}"
   echo "  1. /mybots → Bot Settings → Configure Mini App"
   echo "     URL: https://${SUB_DOMAIN}/app"
@@ -629,20 +650,27 @@ show_final_status() {
   echo ""
 }
 
+run_automatic_install() {
+  section "$(t auto_title)"
+  install_system_packages
+  install_docker
+  download_package
+  generate_env
+  prepare_docker_web_port
+  write_nginx_config
+  setup_ssl
+  start_services
+  install_backup_cron
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 main() {
   choose_lang
   banner
   check_password
   check_requirements
-  install_docker
   collect_config
-  download_package
-  generate_env
-  write_nginx_config
-  setup_ssl
-  start_services
-  install_backup_cron
+  run_automatic_install
   show_final_status
 }
 
