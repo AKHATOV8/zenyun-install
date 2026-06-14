@@ -16,7 +16,8 @@ set -euo pipefail
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-BOT_REPO_NAME="${BOT_REPO_NAME:-zenyun-vpn}"
+GITHUB_USER="AKHATOV8"
+BOT_REPO_NAME="zenyun-vpn"
 DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-/root/.ssh/zenyun_deploy_key}"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
@@ -296,10 +297,8 @@ collect_config() {
 
   local base="${SUB_DOMAIN#*.}"
   prompt APP_DOMAIN ask_app_domain "app.${base}"
-  prompt LANDING_DOMAIN ask_landing "$base"
-  prompt GITHUB_USER ask_github_user
-  prompt BOT_REPO_NAME_INPUT ask_repo_name "$BOT_REPO_NAME"
-  BOT_REPO_NAME="$BOT_REPO_NAME_INPUT"
+
+  LANDING_DOMAIN=""
 
   echo ""
   echo -e "${MAGENTA}$(t ssl_choose)${RESET}"
@@ -309,15 +308,12 @@ collect_config() {
 
   if [[ "$SSL_MODE" == "2" ]]; then
     SSL_TYPE="cloudflare"
-    prompt CF_CERT_PATH ask_cf_cert "/root/cloudflare-origin.pem"
-    prompt CF_KEY_PATH ask_cf_key "/root/cloudflare-origin.key"
+    CF_CERT_PATH="/root/cloudflare-origin.pem"
+    CF_KEY_PATH="/root/cloudflare-origin.key"
   else
     SSL_TYPE="manual"
-    prompt CERTBOT_EMAIL ask_certbot_mail "admin@${base}"
+    CERTBOT_EMAIL="admin@${base}"
   fi
-
-  prompt DEPLOY_KEY_PATH_INPUT ask_deploy_key "$DEPLOY_KEY_PATH"
-  DEPLOY_KEY_PATH="$DEPLOY_KEY_PATH_INPUT"
 }
 
 # ── Deploy key & clone ───────────────────────────────────────────────────────
