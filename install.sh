@@ -2,6 +2,8 @@
 # ZenyunVPN — automated VPS installer
 # Usage: curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh
 
+set -euo pipefail
+
 if [ ! -t 0 ]; then
   echo ""
   echo "⚠️  Please run the installer this way:"
@@ -11,14 +13,15 @@ if [ ! -t 0 ]; then
   exit 1
 fi
 
-set -euo pipefail
-
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.1.0/zenyun-vpn-v1.1.tar.gz"
+PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.2.0/zenyun-vpn-v1.2.tar.gz"
+PACKAGE_SHA256="85ac96bf58be4faf51d1380b63e28c8f27c4fbe226a9d603aedbcf07aa12ee23"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
+_CLEANUP_PATHS=()
+_INSTALL_ROLLBACK=0
 
 # ── Colors & UI ──────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -114,6 +117,15 @@ t() {
     url_bot)          ru="Telegram бот"; en="Telegram bot"; zh="Telegram 机器人" ;;
     botfather_title)  ru="Следующие шаги в @BotFather:"; en="Next steps in @BotFather:"; zh="@BotFather 后续步骤：" ;;
     logs_hint)        ru="Логи: docker compose -f %s/docker-compose.yml logs -f bot web"; en="Logs: docker compose -f %s/docker-compose.yml logs -f bot web"; zh="日志：docker compose -f %s/docker-compose.yml logs -f bot web" ;;
+    checksum_fail)    ru="Контрольная сумма не совпадает — архив повреждён"; en="Checksum mismatch — archive corrupted"; zh="校验和不匹配 — 压缩包已损坏" ;;
+    checksum_ok)      ru="Контрольная сумма проверена"; en="Checksum verified"; zh="校验和已验证" ;;
+    eta_note)         ru="~%s мин"; en="~%s min"; zh="约 %s 分钟" ;;
+    compose_fail)     ru="docker compose не запустился — откат контейнеров"; en="docker compose failed — rolling back containers"; zh="docker compose 启动失败 — 正在回滚容器" ;;
+    health_title)     ru="Проверка API"; en="API health check"; zh="API 健康检查" ;;
+    health_ok)        ru="Health endpoint отвечает OK"; en="Health endpoint OK"; zh="健康检查通过" ;;
+    health_fail)      ru="Health endpoint недоступен на localhost:8000"; en="Health endpoint unavailable on localhost:8000"; zh="localhost:8000 健康检查失败" ;;
+    err_line)         ru="Ошибка на строке %s (код %s)"; en="Error at line %s (exit %s)"; zh="第 %s 行出错（退出码 %s）" ;;
+    checksum_verify)  ru="Проверка контрольной суммы…"; en="Verifying checksum…"; zh="正在校验校验和…" ;;
     support)          ru="Поддержка: @zenyuntestbot"; en="Support: @zenyuntestbot"; zh="技术支持：@zenyuntestbot" ;;
     *) ru="$key"; en="$key"; zh="$key" ;;
   esac
@@ -129,6 +141,28 @@ tf() {
   # shellcheck disable=SC2059
   printf "$(t "$key")" "$@"
 }
+
+cleanup_on_exit() {
+  local code=$?
+  for p in "${_CLEANUP_PATHS[@]}"; do
+    rm -f "$p" 2>/dev/null || true
+  done
+  if [[ "$_INSTALL_ROLLBACK" -eq 1 && -d "$INSTALL_DIR" ]]; then
+    (cd "$INSTALL_DIR" && docker compose down 2>/dev/null) || true
+  fi
+  if [[ $code -ne 0 ]]; then
+    echo -e "${RED}❌${RESET} $(tf err_line "${BASH_LINENO[0]:-?}" "$code")" >&2
+  fi
+  return "$code"
+}
+
+on_err() {
+  trap - ERR
+  fail "$(tf err_line "$1" "$?")"
+}
+
+trap cleanup_on_exit EXIT
+trap 'on_err $LINENO' ERR
 
 choose_lang() {
   echo "Select language / Выберите язык / 选择语言:"
@@ -166,6 +200,7 @@ ok()   { echo -e "${GREEN}✅${RESET} $1"; }
 warn() { echo -e "${YELLOW}⚠️${RESET}  $1"; }
 fail() { echo -e "${RED}❌${RESET} $1"; exit 1; }
 info() { echo -e "${DIM}   $1${RESET}"; }
+eta()  { info "$(tf eta_note "$1")"; }
 
 progress_bar() {
   local current=$1 total=$2 label=$3
@@ -256,8 +291,9 @@ install_system_packages() {
   section "$(t packages_title)"
   export DEBIAN_FRONTEND=noninteractive
   step "$(t packages_install)"
+  eta 3
   apt-get update -y
-  apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx openssl tar
+  apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx openssl tar coreutils
   systemctl enable nginx
   ok "$(t packages_ok)"
 }
@@ -268,7 +304,8 @@ install_docker() {
     ok "$(tf docker_exists "$(docker --version)")"
   else
     step "$(t docker_install)"
-    curl -fsSL https://get.docker.com | sh
+    eta 5
+    curl --retry 3 --retry-delay 2 -fsSL https://get.docker.com | sh
     systemctl enable docker
     systemctl start docker
     ok "$(t docker_ok)"
@@ -333,17 +370,29 @@ collect_config() {
 # ── Download project archive ───────────────────────────────────────────────────
 download_package() {
   section "$(t download_title)"
-  local archive="/tmp/zenyun-vpn.tar.gz"
+  local archive="/tmp/zenyun-vpn-v1.2.tar.gz"
+  _CLEANUP_PATHS+=("$archive")
 
   step "$(t downloading)"
-  if ! wget -q -O "$archive" "$PACKAGE_URL"; then
+  eta 2
+  if ! wget --progress=bar:force --tries=3 --timeout=60 -O "$archive" "$PACKAGE_URL"; then
     rm -f "$archive"
     fail "$(t download_fail)"
   fi
 
+  step "$(t checksum_verify)"
+  local actual
+  actual=$(sha256sum "$archive" | awk '{print $1}')
+  if [[ "$actual" != "$PACKAGE_SHA256" ]]; then
+    rm -f "$archive"
+    fail "$(t checksum_fail)"
+  fi
+  ok "$(t checksum_ok)"
+
   mkdir -p "$INSTALL_DIR"
   tar -xzf "$archive" -C "$INSTALL_DIR"
   rm -f "$archive"
+  _CLEANUP_PATHS=()
 
   [[ -d "$INSTALL_DIR" ]] || fail "$(t download_fail)"
   ok "$(t source_ok)"
@@ -372,13 +421,15 @@ apply_project_name() {
 # ── .env generation ──────────────────────────────────────────────────────────
 generate_env() {
   section "$(t env_title)"
-  local pg_pass admin_secret
+  local pg_pass admin_secret jwt_secret
   pg_pass=$(openssl rand -hex 16)
   admin_secret=$(openssl rand -hex 24)
+  jwt_secret=$(openssl rand -hex 32)
 
   cat > "$INSTALL_DIR/.env" <<EOF
 # ============ ${PROJECT_NAME} — auto-generated $(date -Iseconds) ============
 BOT_TOKEN=${BOT_TOKEN}
+JWT_SECRET=${jwt_secret}
 ADMIN_IDS=${ADMIN_ID}
 ADMIN_LOG_CHANNEL_ID=
 PROJECT_NAME=${PROJECT_NAME}
@@ -596,6 +647,7 @@ setup_ssl() {
   fi
 
   step "$(t le_request)"
+  eta 2
   info "$(t dns_hint)"
 
   if certbot --nginx \
@@ -621,7 +673,14 @@ start_services() {
   cd "$INSTALL_DIR"
 
   step "$(t build_images)"
-  docker compose up -d --build db redis bot web
+  eta 10
+  _INSTALL_ROLLBACK=1
+  if ! docker compose up -d --build db redis bot web; then
+    docker compose down 2>/dev/null || true
+    _INSTALL_ROLLBACK=0
+    fail "$(t compose_fail)"
+  fi
+  _INSTALL_ROLLBACK=0
   ok "$(t containers_ok)"
 
   step "$(t wait_ready)"
@@ -636,6 +695,23 @@ start_services() {
 
   systemctl restart nginx
   docker compose ps
+  post_install_health_check
+}
+
+post_install_health_check() {
+  section "$(t health_title)"
+  local i body
+  for i in $(seq 1 15); do
+    if body=$(curl --retry 3 --retry-delay 2 -fsS http://127.0.0.1:8000/health 2>/dev/null); then
+      if echo "$body" | grep -q '"status"'; then
+        ok "$(t health_ok)"
+        info "$body"
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+  fail "$(t health_fail)"
 }
 
 install_backup_cron() {

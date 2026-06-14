@@ -18,6 +18,8 @@
 curl -sSL https://raw.githubusercontent.com/AKHATOV8/zenyun-install/main/install.sh -o install.sh && bash install.sh
 ```
 
+**Текущая версия пакета:** `v1.2.0` — [скачать архив](https://github.com/AKHATOV8/zenyun-install/releases/download/v1.2.0/zenyun-vpn-v1.2.tar.gz)
+
 > Не используйте `curl … | bash` — интерактивный ввод не работает через pipe.
 
 ### Требования
