@@ -252,7 +252,6 @@ install_system_packages() {
   export DEBIAN_FRONTEND=noninteractive
   step "$(t packages_install)"
   apt-get update -y
-  apt-get upgrade -y
   apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx openssl tar
   systemctl enable nginx
   ok "$(t packages_ok)"
