@@ -71,6 +71,7 @@ t() {
     ask_admin_id)     ru="Telegram ID администратора"; en="Admin Telegram ID"; zh="管理员 Telegram ID" ;;
     admin_id_invalid) ru="Некорректный Telegram ID"; en="Invalid Telegram ID"; zh="Telegram ID 无效" ;;
     ask_sub_domain)   ru="Домен подписки (например sub.example.com)"; en="Subscription domain (e.g. sub.example.com)"; zh="订阅域名（例如 sub.example.com）" ;;
+    domain_required)  ru="Домен обязателен"; en="Domain is required"; zh="域名为必填项" ;;
     ask_app_domain)   ru="Домен кабинета (например app.example.com)"; en="Cabinet domain (e.g. app.example.com)"; zh="用户中心域名（例如 app.example.com）" ;;
     ssl_choose)       ru="Выберите тип SSL:"; en="Choose SSL type:"; zh="选择 SSL 类型：" ;;
     ssl_le)           ru="Let's Encrypt (ручной DNS на сервер)"; en="Let's Encrypt (manual DNS to server)"; zh="Let's Encrypt（手动 DNS 指向服务器）" ;;
@@ -289,10 +290,19 @@ collect_config() {
   [[ "$ADMIN_ID" =~ ^[0-9]+$ ]] || fail "$(t admin_id_invalid)"
 
   prompt SUB_DOMAIN ask_sub_domain
-  SUB_DOMAIN="${SUB_DOMAIN#https://}"; SUB_DOMAIN="${SUB_DOMAIN#http://}"; SUB_DOMAIN="${SUB_DOMAIN%%/*}"
+  SUB_DOMAIN="${SUB_DOMAIN#https://}"
+  SUB_DOMAIN="${SUB_DOMAIN#http://}"
+  SUB_DOMAIN="${SUB_DOMAIN%%/*}"
+  SUB_DOMAIN=$(echo "$SUB_DOMAIN" | tr -cd '[:alnum:].-')
+  [[ -n "$SUB_DOMAIN" ]] || fail "$(t domain_required)"
 
   local base="${SUB_DOMAIN#*.}"
   prompt APP_DOMAIN ask_app_domain "app.${base}"
+  APP_DOMAIN="${APP_DOMAIN#https://}"
+  APP_DOMAIN="${APP_DOMAIN#http://}"
+  APP_DOMAIN="${APP_DOMAIN%%/*}"
+  APP_DOMAIN=$(echo "$APP_DOMAIN" | tr -cd '[:alnum:].-')
+  [[ -n "$APP_DOMAIN" ]] || fail "$(t domain_required)"
 
   LANDING_DOMAIN=""
 
