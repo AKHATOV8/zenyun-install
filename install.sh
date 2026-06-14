@@ -14,7 +14,7 @@ fi
 set -euo pipefail
 
 # ── Constants ────────────────────────────────────────────────────────────────
-CORRECT_HASH="b0aef10571e26a3c3958c01e2c3c85d17e3eb6e55ddfd1a4bbffc2fb4e0ebe09"
+CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
 BOT_REPO_NAME="${BOT_REPO_NAME:-zenyun-vpn}"
 DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-/root/.ssh/zenyun_deploy_key}"
