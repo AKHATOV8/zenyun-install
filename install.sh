@@ -693,6 +693,13 @@ start_services() {
     sleep 2
   done
 
+  step "Database migrations"
+  if docker compose exec -T web alembic upgrade head; then
+    ok "Migrations applied"
+  else
+    warn "Migration failed"
+  fi
+
   systemctl restart nginx
   docker compose ps
   post_install_health_check
