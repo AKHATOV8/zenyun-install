@@ -390,7 +390,7 @@ download_package() {
   ok "$(t checksum_ok)"
 
   mkdir -p "$INSTALL_DIR"
-  tar -xzf "$archive" -C "$INSTALL_DIR"
+  tar -xzf "$archive" -C "$INSTALL_DIR" 2>/dev/null
   rm -f "$archive"
   _CLEANUP_PATHS=()
 
