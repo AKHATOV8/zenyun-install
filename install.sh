@@ -16,8 +16,8 @@ fi
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.2.0/zenyun-vpn-v1.2.tar.gz"
-PACKAGE_SHA256="85ac96bf58be4faf51d1380b63e28c8f27c4fbe226a9d603aedbcf07aa12ee23"
+PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.3.0/zenyun-vpn-v1.3.tar.gz"
+PACKAGE_SHA256="3c2bac52af6285042e1ffd2b284fa45953521d60c7f7550cf6a93c6d01e03140"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
 _CLEANUP_PATHS=()
@@ -370,7 +370,7 @@ collect_config() {
 # ── Download project archive ───────────────────────────────────────────────────
 download_package() {
   section "$(t download_title)"
-  local archive="/tmp/zenyun-vpn-v1.2.tar.gz"
+  local archive="/tmp/zenyun-vpn-v1.3.tar.gz"
   _CLEANUP_PATHS+=("$archive")
 
   step "$(t downloading)"
