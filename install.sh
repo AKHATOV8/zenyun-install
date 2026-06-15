@@ -16,8 +16,8 @@ fi
 # ── Constants ────────────────────────────────────────────────────────────────
 CORRECT_HASH="f1ee2ab84c5aeb3268a2862286a0cd61026995b99aa371261f398c408025f389"
 INSTALL_DIR="${INSTALL_DIR:-/home/vpnbot}"
-PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.4.0/zenyun-vpn-v1.4.tar.gz"
-PACKAGE_SHA256="260118e871bdf002fe3cf575c3c40f11c5c16f6020490f66957891c6dab673d8"
+PACKAGE_URL="https://github.com/AKHATOV8/zenyun-install/releases/download/v1.4.1/zenyun-vpn-v1.4.1.tar.gz"
+PACKAGE_SHA256="44de10ce84819e891a8332fd0bd5cf7753f02db4c70ebb1631fe9edd15184f67"
 CERTBOT_EMAIL_DEFAULT="admin@example.com"
 ZENYUN_LANG="${ZENYUN_LANG:-}"
 _CLEANUP_PATHS=()
